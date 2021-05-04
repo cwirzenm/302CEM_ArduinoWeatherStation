@@ -3,12 +3,7 @@ Three things to do!
 1. Put your WiFi details into the code
 2. Put the Firebase access code that I gave you into the code
 3. Put your name into the path string
-If you want to use DHT sensors, then uncomment all related lines and use the floats that are on the lines 36 and 37
 */
-
-//#include "dht.h"        // if using DHT's, uncomment all the dht lines and change the data formula
-//#define dht1_apin A0    // Analog Pin sensor is connected to
-//#define dht2_apin A1    // Analog Pin sensor is connected to
 
 #include <WiFi.h>
 #include <FirebaseESP32.h>
@@ -20,74 +15,73 @@ If you want to use DHT sensors, then uncomment all related lines and use the flo
 #include <Adafruit_SSD1306.h>
 #include "time.h"
 
-#define BME_SCK 5       // SCK to SCK
-#define BME_MISO 19     // SDO to MISO
-#define BME_MOSI 18     // SDI to MOSI
-#define BME_CS 32       // CS to Digital Pin 0
-#define LED 14          // optional LED
+#define BME_SCK 5           // SCK to SCK
+#define BME_MISO 19         // SDO to MISO
+#define BME_MOSI 18         // SDI to MOSI
+#define BME_CS 32           // CS to Digital Pin 0
+#define LED 14              // optional LED
 #define SCREEN_WIDTH 128    // OLED display width, in pixels
 #define SCREEN_HEIGHT 32    // OLED display height, in pixels
 #define OLED_RESET    32    // Reset pin # (or -1 if sharing Arduino reset pin)
-#define SCREEN_ADDRESS 0x3C ///< See datasheet for Address; 0x3C for 128x32
+#define SCREEN_ADDRESS 0x3C // See datasheet for Address; 0x3C for 128x32
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 Adafruit_BME280 bme(BME_CS, BME_MOSI, BME_MISO, BME_SCK); // software SPI
 
-//dht DHT1, DHT2;
-//float temperatureReading;
-//float humidityReading;
-
-#define WIFI_SSID "YOUR_WIFI"
-#define WIFI_PASSWORD "YOUR_WIFI_PASSWORD"
+// WiFi and database details
+#define WIFI_SSID "WIFI"
+#define WIFI_PASSWORD "PASSWORD"
 #define FIREBASE_HOST "weatherstatino-default-rtdb.europe-west1.firebasedatabase.app/"
-#define FIREBASE_AUTH "ACCESS_CODE"
+#define FIREBASE_AUTH "SECRET_CODE"
 
-//Define FirebaseESP32 data object
+// Define FirebaseESP32 data object
 FirebaseData fbdo;
 FirebaseJson json;
 
-const char* ntpServer = "pool.ntp.org";
-const int gmtOffset_sec = 3600;
-struct tm timeinfo;
-
-String path = "/INSERT_YOUR_NAME/Readings ";
+const char* ntpServer = "pool.ntp.org";   // NTP server for time data 
+const int gmtOffset_sec = 3600;           // GMT+1
+struct tm timeinfo;                       // Create time structure
+String path = "/Maks/Readings ";          // Save data to directory; NAME YOUR DIRECTORY WITH YOUR NAME
 String readTime;
 
+// Define functions
 void printReadings();
 void printResult(FirebaseData &data);
 void sendReadings(String parameter, int reading);
 
 void setup() {
 
+  // Initialise LED and serial
   pinMode(LED, OUTPUT);
   digitalWrite(LED, HIGH);
   Serial.begin(1000000);
-  while(!Serial);     // get the serial running
-  delay(1000);        // wait before accessing Sensor
+  while(!Serial);       // Get the serial running
+  delay(1000);          // Wait before accessing Sensor
   digitalWrite(LED, LOW);
 
+  // Initialise BME Sensor
   unsigned status;
   status = bme.begin(0x76, &Wire);
 
+  // Initialise OLED display
   if(!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
     Serial.println(F("SSD1306 allocation failed"));
     for(;;);          // Don't proceed, loop forever
   }
-  // Show initial display buffer contents on the screen --
-  // the library initializes this with an Adafruit splash screen.
   display.display();
   delay(500);         // Pause for 0.5 second
 
-  display.clearDisplay();   // Clear the buffer
-  display.setTextSize(1);                   // Normal 1:1 pixel scale
-  display.setTextColor(SSD1306_WHITE);      // Draw white text
-  display.setCursor(0,0);                   // Start at top-left corner
+  display.clearDisplay();               // Clear the buffer
+  display.setTextSize(1);               // Normal 1:1 pixel scale
+  display.setTextColor(SSD1306_WHITE);  // Draw white text
+  display.setCursor(0,0);               // Start at top-left corner
 
   // Draw a single pixel in white
   display.drawPixel(10, 10, SSD1306_WHITE);
   display.display();
   delay(500);
-
   display.clearDisplay();   // Clear the buffer
+
+  // Connect to WiFi
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   display.print("Connecting to Wi-Fi");
   display.display();
@@ -99,38 +93,34 @@ void setup() {
   display.clearDisplay();   // Clear the buffer
   display.println();
   display.println("Connected with IP: ");
-  display.println(WiFi.localIP());
+  display.println(WiFi.localIP());  // Display the system's IP
   display.display();
 
-  //init and get the time
+  // Initialise time
   configTime(gmtOffset_sec, 0, ntpServer);
   if(!getLocalTime(&timeinfo)){
     Serial.println("Failed to obtain time");
     return;
   }
+  // Get time and display
   readTime = String(timeinfo.tm_mday)+" "+String(timeinfo.tm_mon+1)+" "+String(timeinfo.tm_hour)+":00";
   Serial.println(readTime);
   Serial.println(&timeinfo, "%B %d %Y %H:%M");
   display.print(&timeinfo, "%B %d %Y %H:%M");
   display.display();
 
+  // Establish firebase connection
   Firebase.begin(FIREBASE_HOST, FIREBASE_AUTH);
   Firebase.reconnectWiFi(true);
-
-  //Set database read timeout to 1 minute (max 15 minutes)
-  Firebase.setReadTimeout(fbdo, 1000 * 60);
-  //tiny, small, medium, large and unlimited.
-  //Size and its write timeout e.g. tiny (1s), small (10s), medium (30s) and large (60s).
-  Firebase.setwriteSizeLimit(fbdo, "tiny");
-
-  //set the decimal places for float
-  Firebase.setFloatDigits(1);
+  Firebase.setReadTimeout(fbdo, 1000 * 60);   // Set database read timeout to 1 minute (max 15 minutes)
+  Firebase.setwriteSizeLimit(fbdo, "tiny");   // Set size and it's write timeout
+  Firebase.setFloatDigits(1);                 // Set the decimal places for float
 
   digitalWrite(LED, HIGH);
   delay(1000);
 }
 
-void loop() { //Start of Program
+void loop() {   // Measure and send data every 5 seconds
   printReadings();
   delay(5000);
 }
@@ -139,23 +129,21 @@ void printReadings() {
   
   String parameter;
   int reading;
-//  DHT1.read11(dht1_apin);
-//  DHT2.read11(dht2_apin);
-//  temperatureReading = (DHT1.temperature + DHT2.temperature + bme.readTemperature())/3;
-//  humidityReading = (DHT1.humidity + DHT2.humidity + bme.readHumidity())/3;
   
-  display.clearDisplay();                     // Clear the buffer
-  display.setTextSize(1);                     // Normal 1:1 pixel scale
-  display.setTextColor(SSD1306_WHITE);        // Draw white text
-  display.setCursor(0,0);                     // Start at top-left corner
-  
+  display.clearDisplay();                 // Clear the buffer
+  display.setTextSize(1);                 // Normal 1:1 pixel scale
+  display.setTextColor(SSD1306_WHITE);    // Draw white text
+  display.setCursor(0,0);                 // Start at top-left corner
+
+  // Display temperature readings on the OLED display and send to the firebase
   display.print("Temperature: ");
-  display.print(bme.readTemperature(), 1);       // if using dht: print(temperatureReading);
+  display.print(bme.readTemperature(), 1);
   display.println(" C");
   parameter = "Temperature (C)";
   reading = bme.readTemperature();
   sendReadings(parameter, reading);
 
+  // Display air pressure readings on the OLED display and send to the firebase
   display.print("Pressure: ");
   display.print(bme.readPressure() / 100.0F, 1);
   display.println(" hPa");
@@ -163,14 +151,15 @@ void printReadings() {
   reading = bme.readPressure() / 100.0F;
   sendReadings(parameter, reading);
 
+  // Display humidity readings on the OLED display and send to the firebase
   display.print("Humidity: ");
-  display.print(bme.readHumidity(), 2);          // if using dht: print(humidityReading);
+  display.print(bme.readHumidity(), 2);
   display.println(" %");
   parameter = "Humidity (%)";
   reading = bme.readHumidity();
   sendReadings(parameter, reading);
 
-  getLocalTime(&timeinfo);
+  getLocalTime(&timeinfo);    // Update the clock
   display.print(&timeinfo, "%B %d %Y %H:%M");
   display.display();
   readTime = String(timeinfo.tm_mday)+" "+String(timeinfo.tm_mon+1)+" "+String(timeinfo.tm_hour)+":00";
@@ -178,27 +167,22 @@ void printReadings() {
 
 void sendReadings(String parameter, int reading) {
 
-  Serial.println("------------------------------------");
-  Serial.println("Update test...");
-
   for (uint8_t i = 0; i < 5; i++) {
-
+    // Format the reading in json dataframe
     json.set(parameter, reading);
-    
+
+    // Check for the proper data format
     if (Firebase.updateNode(fbdo, path + readTime, json)) {
       Serial.println("PASSED");
       Serial.println("PATH: " + fbdo.dataPath());
       Serial.println("TYPE: " + fbdo.dataType());
-      //No ETag available
       Serial.print("VALUE: ");
-      printResult(fbdo);
-      Serial.println("------------------------------------");
+      printResult(fbdo);    // Print Result to Serial
       Serial.println();
     }
-    else {
+    else {    // Error! Might happen; If not happening constantly, then nothing to worry
       Serial.println("FAILED");
       Serial.println("REASON: " + fbdo.errorReason());
-      Serial.println("------------------------------------");
       Serial.println();
     }
   }
@@ -206,19 +190,22 @@ void sendReadings(String parameter, int reading) {
 
 void printResult(FirebaseData &data) {
 
-  if (data.dataType() == "json") {
-    Serial.println();
-    FirebaseJson &json = data.jsonObject();
-    //Print all object data
+  if (data.dataType() == "json") {  // Check for JSON dataframe
+
     String jsonStr;
-    json.toString(jsonStr, true);
+    FirebaseJson &json = data.jsonObject(); // Create Firebase object
+
+    json.toString(jsonStr, true);   // Convert JSON to String
+    
     Serial.println(jsonStr);
     Serial.println();
     Serial.println("Iterate JSON data:");
     Serial.println();
-    size_t len = json.iteratorBegin();
+
+    size_t len = json.iteratorBegin();  // Initialise JSON iterator
     String key, value = "";
     int type = 0;
+    // Print JSON Data to Serial
     for (size_t i = 0; i < len; i++) {
       json.iteratorGet(i, type, key, value);
       Serial.print(i);
@@ -236,9 +223,9 @@ void printResult(FirebaseData &data) {
     json.iteratorEnd();
   }
   
-  else {          // this block should not happen if data formatted properly
+  else {      // this block should not happen
     Serial.println(data.payload());
     Serial.println("\nERROR!\nDatatype not json");
-    for(;;);      // loop forever
+    for(;;);  // loop forever
   }
 }
